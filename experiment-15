@@ -1,0 +1,103 @@
+%pip install -q -U google-genai
+-----------------------------------------------------------------------
+import json
+import mimetypes
+from google import genai
+from google.genai import types
+from google.colab import files, userdata
+
+uploaded = files.upload()
+
+image_name = next(iter(uploaded))
+image_bytes = uploaded[image_name]
+
+mime_type = mimetypes.guess_type(image_name)[0]
+
+if not mime_type or not mime_type.startswith("image/"):
+    raise ValueError("Please upload a valid image file.")
+
+print("Image uploaded:", image_name)
+print("Image type:", mime_type)
+-------------------------------------------------------------------------------
+api_key = userdata.get("GEMINI_API_KEY")
+
+if not api_key:
+    raise ValueError("Please add GEMINI_API_KEY in Colab Secrets.")
+
+client = genai.Client(api_key=api_key)
+print("Gemini API configured successfully.")
+-------------------------------------------------------
+prompt = """
+Analyze the attached restaurant receipt image.
+
+Extract these fields:
+1. restaurant_name
+2. date in YYYY-MM-DD format, or null if unclear
+3. items: list of objects containing name and price
+4. subtotal
+5. tax
+6. total
+
+Requirements:
+- Return a valid JSON object only, without Markdown fences.
+- Use numeric values for prices.
+- Use null for missing or unreadable values. Do not guess.
+- Include all identifiable ordered items.
+- Do not invent information.
+- Preserve the currency if it is identifiable; otherwise use numeric values
+  and do not assume a currency.
+- Check whether subtotal + tax equals total.
+- Set "calculation_check" to true if they match, false if they do not,
+  or null if any required value is missing or unclear.
+
+Use this JSON structure:
+{
+  "restaurant_name": "string or null",
+  "date": "YYYY-MM-DD or null",
+  "items": [
+    {"name": "string", "price": 0.00}
+  ],
+  "subtotal": 0.00,
+  "tax": 0.00,
+  "total": 0.00,
+  "calculation_check": true
+}
+"""
+-------------------------------------------------------------------
+subtotal = receipt_data["subtotal"]
+tax = receipt_data["tax"]
+total = receipt_data["total"]
+
+if all(isinstance(x, (int, float)) and not isinstance(x, bool)
+       for x in [subtotal, tax, total]):
+    actual_check = round(subtotal + tax, 2) == round(total, 2)
+    receipt_data["calculation_check"] = actual_check
+    print("Subtotal + tax:", round(subtotal + tax, 2))
+    print("Receipt total:", total)
+    print("Calculation correct:", actual_check)
+else:
+    receipt_data["calculation_check"] = None
+    print("Cannot validate: one or more amounts are missing or unclear.")
+    ------------------------------------------------------------------------------
+    
+
+import json
+
+receipt_data = {
+    "restaurant_name": "The Golden Wok",
+    "date": "2026-03-15",
+    "items": [
+        {"name": "Spring Rolls", "price": 5.99},
+        {"name": "Kung Pao Chicken", "price": 14.99}
+    ],
+    "subtotal": 20.98,
+    "tax": 1.68,
+    "total": 22.66,
+    "calculation_check": True
+}
+
+with open("receipt_output.json", "w") as f:
+    json.dump(receipt_data, f, indent=2)
+
+print(json.dumps(receipt_data, indent=2))
+print("\nJSON file created successfully!")
